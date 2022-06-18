@@ -9,12 +9,13 @@ mod tests {
     use std::str::FromStr;
 
     use bitcoin::hashes::hex::{FromHex, ToHex};
-    use bitcoin::{Address, OutPoint, schnorr, SchnorrSighashType, Transaction, Txid, TxIn, TxOut, Witness};
+    use bitcoin::{Address, EcdsaSighashType, OutPoint, schnorr, SchnorrSighashType, Transaction, Txid, TxIn, TxOut, Witness};
     use bitcoin::hashes::{Hash, HashEngine};
     use bitcoin::psbt::serialize::Serialize;
     use bitcoin::schnorr::{TapTweak, UntweakedKeyPair};
     use bitcoin::Script;
     use bitcoin::secp256k1::Secp256k1;
+    use bitcoin::util::sighash::Prevouts;
     use bitcoin::util::taproot;
     use secp256k1::{Message};
 
@@ -45,7 +46,7 @@ mod tests {
         };
 
         let tx_output = TxOut {
-            value: 4999995000,
+            value: 49_9999_5000,
             script_pubkey: output_details.script_pubkey()
         };
 
@@ -56,9 +57,15 @@ mod tests {
             output: vec![tx_output]
         };
 
-        // SIGHASH_DEFAULT is 0
-        let signature_hash = transaction.signature_hash(0, &output_details.script_pubkey(), 0);
+        let previous_output_as_tx_out = TxOut {
+            value: 50_0000_0000,
+            script_pubkey: output_details.script_pubkey()
+        };
+        let prevouts = vec![previous_output_as_tx_out];
+        let mut sighash_cache = bitcoin::util::sighash::SighashCache::new(&transaction);
+        let signature_hash = sighash_cache.taproot_key_spend_signature_hash(0, &Prevouts::All(&prevouts), SchnorrSighashType::Default).unwrap();
         let message = Message::from_slice(&signature_hash.to_vec()).unwrap();
+        assert_eq!(message.to_hex(), "61746ec9baa14bbe82586c7f149926b1492871c67dc7fe21e7cfe2f2260a1405");
         println!("sighash: {}", message.to_hex());
 
         let tweaked_private_key = private_key.tap_tweak(&secp, tap_tree.merkle_root()).into_inner();
